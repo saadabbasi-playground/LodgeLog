@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>LodgeLog — Australian tax & BAS companion</title>
+<meta name="description" content="Track income, deductions and GST through the financial year. Estimate your Australian tax return and prepare your BAS.">
+<meta name="theme-color" content="#0F2A26">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LodgeLog">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#14201D;
+  --ink-soft:#3D4C47;
+  --muted:#66756F;
+  --paper:#EFF2EE;
+  --card:#FFFFFF;
+  --line:#D4DAD5;
+  --line-strong:#14201D;
+  --green:#166B4E;
+  --green-soft:#E2EFE8;
+  --gold:#B98416;
+  --gold-soft:#F6ECD6;
+  --red:#A93E2B;
+  --red-soft:#F5E4DF;
+  --meter-bg:#0F2A26;
+  --meter-fg:#F2E9CF;
+  --radius:10px;
+  --font-body:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --font-mono:'IBM Plex Mono','SF Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{font-size:16px}
+body{
+  font-family:var(--font-body);
+  background:var(--paper);
+  color:var(--ink);
+  line-height:1.45;
+  padding-bottom:calc(76px + env(safe-area-inset-bottom));
+  min-height:100vh;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font-family:inherit;font-size:1rem;color:var(--ink)}
+h1,h2,h3{font-weight:800;letter-spacing:-0.01em}
+
+/* ---------- Meter (signature element) ---------- */
+.meter{
+  position:sticky;top:0;z-index:50;
+  background:var(--meter-bg);color:var(--meter-fg);
+  padding:calc(10px + env(safe-area-inset-top)) 16px 12px;
+  display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
+  border-bottom:3px solid var(--gold);
+}
+.meter .label{font-size:.68rem;text-transform:uppercase;letter-spacing:.14em;opacity:.75;font-weight:600}
+.meter .figure{font-family:var(--font-mono);font-size:1.7rem;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.05}
+.meter .figure.refund{color:#8FD6B4}
+.meter .figure.payable{color:#F0A48E}
+.meter .fy-pick{
+  font-family:var(--font-mono);font-size:.78rem;font-weight:500;
+  background:transparent;color:var(--meter-fg);
+  border:1px solid rgba(242,233,207,.4);border-radius:6px;padding:5px 8px;
+  -webkit-appearance:none;appearance:none;
+}
+.meter .fy-pick:focus{outline:2px solid var(--gold)}
+
+/* ---------- Layout ---------- */
+main{max-width:640px;margin:0 auto;padding:16px 16px 24px}
+.view{display:none}
+.view.active{display:block;animation:fadein .18s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.eyebrow{font-family:var(--font-mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.16em;color:var(--muted);font-weight:600;margin-bottom:4px}
+.page-title{font-size:1.5rem;font-stretch:110%;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.card.flat{background:transparent;border-style:dashed}
+.card h3{font-size:1rem;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.hint{font-size:.8rem;color:var(--muted);line-height:1.4}
+.hint a{color:var(--green)}
+.divider{border:none;border-top:1px solid var(--line);margin:12px 0}
+.badge{font-family:var(--font-mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;padding:3px 7px;border-radius:5px;white-space:nowrap}
+.badge.green{background:var(--green-soft);color:var(--green)}
+.badge.gold{background:var(--gold-soft);color:var(--gold)}
+.badge.red{background:var(--red-soft);color:var(--red)}
+.badge.ink{background:var(--ink);color:#fff}
+
+/* ---------- Forms ---------- */
+.field{margin-bottom:12px}
+.field label{display:block;font-size:.78rem;font-weight:700;margin-bottom:5px;color:var(--ink-soft)}
+.field input,.field select,.field textarea{
+  width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;
+}
+.field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--green);border-color:var(--green)}
+.field .sub{font-size:.72rem;color:var(--muted);margin-top:4px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.check{display:flex;align-items:flex-start;gap:10px;padding:10px 0;font-size:.9rem}
+.check input{width:20px;height:20px;flex-shrink:0;accent-color:var(--green);margin-top:1px}
+.check .c-label{font-weight:700}
+.check .c-sub{display:block;font-size:.75rem;color:var(--muted);font-weight:400}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  font-weight:800;font-size:.92rem;padding:12px 18px;border-radius:8px;
+  background:var(--ink);color:#fff;width:100%;
+}
+.btn:active{transform:scale(.98)}
+.btn.secondary{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}
+.btn.small{width:auto;padding:8px 12px;font-size:.8rem}
+.btn.danger-ghost{background:transparent;color:var(--red);border:1.5px solid var(--red)}
+.seg{display:flex;border:1.5px solid var(--ink);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.seg button{flex:1;padding:10px 6px;font-weight:700;font-size:.82rem;background:#fff}
+.seg button.on{background:var(--ink);color:#fff}
+
+/* ---------- Lists ---------- */
+.item{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:none}
+.item .i-main{min-width:0}
+.item .i-title{font-weight:700;font-size:.92rem}
+.item .i-sub{font-size:.74rem;color:var(--muted);margin-top:2px}
+.item .i-amount{font-family:var(--font-mono);font-weight:600;font-size:.95rem;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.item .i-del{font-size:.7rem;color:var(--red);font-weight:700;margin-top:3px;padding:2px 0}
+.summary-line{display:flex;justify-content:space-between;font-size:.88rem;padding:5px 0}
+.summary-line .v{font-family:var(--font-mono);font-weight:600;font-variant-numeric:tabular-nums}
+.summary-line.total{border-top:2px solid var(--ink);margin-top:6px;padding-top:9px;font-weight:800}
+.summary-line.total .v{font-weight:600;font-size:1.05rem}
+.empty{padding:22px 12px;text-align:center;color:var(--muted);font-size:.85rem;border:1px dashed var(--line);border-radius:var(--radius)}
+
+/* ---------- Recommendations ---------- */
+.rec{border-left:3px solid var(--gold);padding:10px 12px;background:var(--gold-soft);border-radius:0 8px 8px 0;margin-bottom:10px}
+.rec .r-title{font-weight:800;font-size:.88rem}
+.rec .r-body{font-size:.78rem;color:var(--ink-soft);margin-top:3px;line-height:1.45}
+.rec .r-est{font-family:var(--font-mono);font-size:.72rem;color:var(--gold);font-weight:600;margin-top:5px}
+.rec button{font-size:.74rem;font-weight:800;color:var(--green);margin-top:6px;text-decoration:underline;text-underline-offset:2px}
+
+/* ---------- Nav ---------- */
+nav{
+  position:fixed;bottom:0;left:0;right:0;z-index:60;
+  background:var(--card);border-top:1px solid var(--line);
+  display:flex;justify-content:space-around;
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+}
+nav button{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:6px 2px;font-size:.62rem;font-weight:700;color:var(--muted);
+  border-radius:8px;max-width:96px;letter-spacing:.02em;
+}
+nav button svg{width:22px;height:22px;stroke-width:1.8}
+nav button.on{color:var(--green)}
+nav button:focus-visible{outline:2px solid var(--green)}
+
+/* ---------- Modal ---------- */
+.modal-wrap{position:fixed;inset:0;z-index:100;display:none}
+.modal-wrap.open{display:block}
+.modal-bg{position:absolute;inset:0;background:rgba(20,32,29,.5)}
+.modal{
+  position:absolute;bottom:0;left:0;right:0;max-height:88vh;overflow-y:auto;
+  background:var(--card);border-radius:16px 16px 0 0;padding:18px 18px calc(20px + env(safe-area-inset-bottom));
+  max-width:640px;margin:0 auto;animation:up .2s ease;
+}
+@keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
+.modal h3{margin-bottom:14px;font-size:1.1rem}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+.toast{
+  position:fixed;bottom:calc(86px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+  background:var(--ink);color:#fff;font-size:.82rem;font-weight:700;padding:10px 18px;border-radius:20px;
+  z-index:200;opacity:0;pointer-events:none;transition:opacity .2s;white-space:nowrap;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- ============ METER ============ -->
+<header class="meter">
+  <div>
+    <div class="label" id="meterLabel">Estimated refund</div>
+    <div class="figure refund" id="meterFigure">$0.00</div>
+  </div>
+  <select class="fy-pick" id="fySelect" aria-label="Financial year">
+    <option value="2025-26">FY 2025–26</option>
+    <option value="2026-27">FY 2026–27</option>
+  </select>
+</header>
+
+<main>
+  <!-- ============ HOME ============ -->
+  <section class="view active" id="view-home">
+    <div class="eyebrow">Overview</div>
+    <h2 class="page-title" id="homeGreeting">Your tax position</h2>
+
+    <div class="card" id="homeSummary"></div>
+    <div class="card" id="homeBasCard" style="display:none"></div>
+
+    <div class="card">
+      <h3>Suggested deductions <span class="badge gold">Based on your profile</span></h3>
+      <p class="hint" style="margin-bottom:10px">Common claims for how you work, drawn from ATO guidance. Estimates are typical ranges only — your claim must reflect what you actually spent and can substantiate.</p>
+      <div id="recList"></div>
+    </div>
+
+    <div class="card flat">
+      <p class="hint"><strong>General information only.</strong> LodgeLog gives estimates using published ATO rates and thresholds. It doesn't account for HELP/HECS repayments, Medicare levy surcharge, franking credits, offsets other than LITO, or non-commercial loss rules. It isn't tax advice — confirm your position with a registered tax agent or the ATO before lodging.</p>
+    </div>
+  </section>
+
+  <!-- ============ INCOME ============ -->
+  <section class="view" id="view-income">
+    <div class="eyebrow">Money in</div>
+    <h2 class="page-title">Income</h2>
+
+    <div class="card">
+      <h3>Salary & wages <span class="badge ink">PAYG</span></h3>
+      <div class="row2">
+        <div class="field"><label for="salaryGross">Gross salary (year)</label><input type="number" id="salaryGross" inputmode="decimal" placeholder="0"></div>
+        <div class="field"><label for="salaryWithheld">Tax withheld</label><input type="number" id="salaryWithheld" inputmode="decimal" placeholder="0"></div>
+      </div>
+      <p class="hint">From your payslips or income statement in myGov. Include all employers.</p>
+    </div>
+
+    <div class="card" id="bizIncomeCard">
+      <h3>Business / ABN income <span class="badge green" id="bizGstBadge">GST reg.</span></h3>
+      <p class="hint" style="margin-bottom:10px">Rideshare fares, sole-trader invoices, side-business sales. Enter gross amounts (GST-inclusive where charged) with a date so BAS can sort them into quarters.</p>
+      <div id="bizIncomeList"></div>
+      <button class="btn secondary small" onclick="openBizIncomeModal()">+ Add business income</button>
+    </div>
+
+    <div class="card">
+      <h3>Other income</h3>
+      <div class="field"><label for="otherIncome">Interest, dividends, other (year total)</label><input type="number" id="otherIncome" inputmode="decimal" placeholder="0">
+      <div class="sub">Franking credits aren't modelled — the estimate will be conservative if you hold franked shares.</div></div>
+    </div>
+
+    <div class="card" id="paygCard">
+      <h3>PAYG instalments paid</h3>
+      <div class="field"><label for="paygInstalments">Total instalments this FY</label><input type="number" id="paygInstalments" inputmode="decimal" placeholder="0">
+      <div class="sub">If the ATO has you on quarterly instalments for business income, they're credited against your final bill.</div></div>
+    </div>
+  </section>
+
+  <!-- ============ EXPENSES ============ -->
+  <section class="view" id="view-expenses">
+    <div class="eyebrow">Money out</div>
+    <h2 class="page-title">Expenses & deductions</h2>
+
+    <div class="card" id="expSummary"></div>
+
+    <button class="btn" onclick="openExpenseModal()" style="margin-bottom:14px">+ Add expense</button>
+
+    <div class="card">
+      <h3>Logged expenses</h3>
+      <div id="expenseList"></div>
+    </div>
+  </section>
+
+  <!-- ============ TOOLS ============ -->
+  <section class="view" id="view-tools">
+    <div class="eyebrow">Calculators</div>
+    <h2 class="page-title">Claim tools</h2>
+
+    <div class="card">
+      <h3>Working from home <span class="badge green" id="wfhRateBadge">70c/hr</span></h3>
+      <div class="seg" id="wfhSeg">
+        <button data-m="fixed" class="on">Fixed rate</button>
+        <button data-m="actual">Actual cost</button>
+      </div>
+      <div id="wfhFixedPane">
+        <div class="field"><label for="wfhHours">Hours worked from home this FY</label><input type="number" id="wfhHours" inputmode="decimal" placeholder="e.g. 960">
+        <div class="sub">You need a contemporaneous record of actual hours (timesheet, roster or diary kept through the year) plus at least one bill for each expense type the rate covers. Estimates aren't accepted.</div></div>
+        <div class="summary-line total"><span>WFH deduction</span><span class="v" id="wfhResult">$0.00</span></div>
+        <p class="hint" style="margin-top:8px">The rate covers electricity/gas, internet, phone and stationery — don't claim those separately. Depreciating assets (desk, monitor, laptop) are claimed on top: items ≤ $300 in full, above that over their effective life. Add them as an expense under "Tools & equipment".</p>
+      </div>
+      <div id="wfhActualPane" style="display:none">
+        <div class="field"><label for="wfhActualAmt">Your calculated work-related running costs</label><input type="number" id="wfhActualAmt" inputmode="decimal" placeholder="0">
+        <div class="sub">Actual method: apportion each real bill (energy, internet, phone) by your work-use percentage, with records for the full year. Usually only worth it for heavy, well-documented home use.</div></div>
+        <div class="summary-line total"><span>WFH deduction</span><span class="v" id="wfhActualResult">$0.00</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Car expenses <span class="badge green" id="carRateBadge">88c/km</span></h3>
+      <div class="field">
+        <label for="carUse">Claiming as</label>
+        <select id="carUse">
+          <option value="employee">Employee (work travel, D1)</option>
+          <option value="business">Business / rideshare vehicle</option>
+        </select>
+        <div class="sub">Normal home-to-work commuting doesn't count. For rideshare, kilometres while logged in and driving for work generally do.</div>
+      </div>
+      <div class="seg" id="carSeg">
+        <button data-m="cpk" class="on">Cents per km</button>
+        <button data-m="logbook">Logbook</button>
+      </div>
+      <div id="carCpkPane">
+        <div class="field"><label for="carKm">Work-related kilometres this FY</label><input type="number" id="carKm" inputmode="decimal" placeholder="max 5,000">
+        <div class="sub">Capped at 5,000 km per car. The rate covers ALL running costs — fuel, rego, insurance, servicing, depreciation. Keep a diary or app record of how you worked out the kilometres.</div></div>
+        <div class="summary-line total"><span>Car deduction</span><span class="v" id="carResult">$0.00</span></div>
+        <p class="hint" id="carCpkWarn" style="margin-top:8px;display:none"></p>
+      </div>
+      <div id="carLogbookPane" style="display:none">
+        <div class="row2">
+          <div class="field"><label for="carBizPct">Business-use % (from 12-week logbook)</label><input type="number" id="carBizPct" inputmode="decimal" placeholder="e.g. 70" max="100"></div>
+          <div class="field"><label for="carDepn">Car depreciation this FY ($)</label><input type="number" id="carDepn" inputmode="decimal" placeholder="0"></div>
+        </div>
+        <div class="sub" style="font-size:.72rem;color:var(--muted);margin-bottom:8px">With the logbook method, log your actual running costs (fuel, rego, insurance, servicing, tyres, cleaning) as expenses — the business-use % here is applied to them automatically. A valid 12-week logbook lasts up to 5 years if your pattern doesn't change.</div>
+        <div class="summary-line"><span>Running costs × <span id="carPctEcho">0</span>%</span><span class="v" id="carRunningResult">$0.00</span></div>
+        <div class="summary-line"><span>Depreciation × business %</span><span class="v" id="carDepnResult">$0.00</span></div>
+        <div class="summary-line total"><span>Car deduction</span><span class="v" id="carLogbookTotal">$0.00</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BAS ============ -->
+  <section class="view" id="view-bas">
+    <div class="eyebrow">GST & activity statements</div>
+    <h2 class="page-title">BAS helper</h2>
+    <div id="basContent"></div>
+  </section>
+
+  <!-- ============ PROFILE ============ -->
+  <section class="view" id="view-profile">
+    <div class="eyebrow">Setup</div>
+    <h2 class="page-title">Your profile</h2>
+
+    <div class="card">
+      <h3>How do you work?</h3>
+      <p class="hint" style="margin-bottom:6px">Tick everything that applies — this drives your deduction suggestions and which sections appear.</p>
+      <label class="check"><input type="checkbox" id="pEmployee"><span><span class="c-label">Employee (salary/wages)</span><span class="c-sub">You get payslips and tax is withheld</span></span></label>
+      <label class="check"><input type="checkbox" id="pWfh"><span><span class="c-label">I work from home some or all of the time</span><span class="c-sub">Enables the WFH deduction suggestions</span></span></label>
+      <label class="check"><input type="checkbox" id="pRideshare"><span><span class="c-label">Rideshare / delivery driver</span><span class="c-sub">Uber, DiDi, Ola, food delivery — you have an ABN</span></span></label>
+      <label class="check"><input type="checkbox" id="pBusiness"><span><span class="c-label">Sole trader / small business</span><span class="c-sub">Invoicing clients or selling under an ABN</span></span></label>
+      <label class="check"><input type="checkbox" id="pGst"><span><span class="c-label">Registered for GST</span><span class="c-sub">Required over $75k turnover — and from the first dollar for rideshare driving</span></span></label>
+      <p class="hint" id="gstMandatoryNote" style="display:none;color:var(--red)">⚠ Rideshare drivers must register for GST regardless of turnover — GST applies to every fare from day one. Food-delivery-only drivers follow the normal $75k threshold.</p>
+    </div>
+
+    <div class="card">
+      <h3>Data</h3>
+      <p class="hint" style="margin-bottom:10px" id="storageNote"></p>
+      <button class="btn secondary small" onclick="exportData()">Export backup (JSON)</button>
+      <button class="btn secondary small" onclick="document.getElementById('importFile').click()" style="margin-left:6px">Import backup</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+      <hr class="divider">
+      <button class="btn danger-ghost small" onclick="resetAll()">Erase everything</button>
+    </div>
+
+    <div class="card flat">
+      <p class="hint">Rates loaded for <strong id="ratesEcho"></strong>. Sources: ATO individual tax rates, working-from-home fixed rate method, cents-per-kilometre determination, GST/BAS labels. Rates are baked in as at July 2026 — always cross-check <a href="https://www.ato.gov.au" target="_blank" rel="noopener">ato.gov.au</a> before lodging.</p>
+    </div>
+  </section>
+</main>
+
+<!-- ============ NAV ============ -->
+<nav>
+  <button data-view="home" class="on" aria-label="Home">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 11l9-8 9 8v9a2 2 0 01-2 2h-4v-6h-6v6H5a2 2 0 01-2-2z"/></svg>Home</button>
+  <button data-view="income" aria-label="Income">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2v20M17 7H9.5a3 3 0 000 6h5a3 3 0 010 6H6"/></svg>Income</button>
+  <button data-view="expenses" aria-label="Expenses">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 3h16v18l-3-2-3 2-2-2-2 2-3-2-3 2zM8 8h8M8 12h8M8 16h5"/></svg>Expenses</button>
+  <button data-view="tools" aria-label="Tools">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h2M8 15h2M8 19h2M13 11h3M13 15h3M13 19h3"/></svg>Tools</button>
+  <button data-view="bas" aria-label="BAS" id="navBas">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 12h6M9 16h6M9 8h1M5 3h11l4 4v14a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/></svg>BAS</button>
+  <button data-view="profile" aria-label="Profile">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Profile</button>
+</nav>
+
+<!-- ============ EXPENSE MODAL ============ -->
+<div class="modal-wrap" id="expenseModal">
+  <div class="modal-bg" onclick="closeModal('expenseModal')"></div>
+  <div class="modal" role="dialog" aria-label="Add expense">
+    <h3>Add expense</h3>
+    <div class="field"><label for="exDesc">What was it?</label><input type="text" id="exDesc" placeholder="e.g. Noise-cancelling headphones"></div>
+    <div class="row2">
+      <div class="field"><label for="exAmount">Amount ($, incl. GST)</label><input type="number" id="exAmount" inputmode="decimal" placeholder="0.00"></div>
+      <div class="field"><label for="exDate">Date</label><input type="date" id="exDate"></div>
+    </div>
+    <div class="field"><label for="exCategory">Category</label><select id="exCategory"></select><div class="sub" id="exCatHint"></div></div>
+    <div class="field"><label for="exUsePct">Work / business use %</label><input type="number" id="exUsePct" inputmode="decimal" value="100" max="100"><div class="sub">Only the work-related portion is deductible.</div></div>
+    <label class="check" id="exGstRow"><input type="checkbox" id="exGst" checked><span><span class="c-label">Price includes GST</span><span class="c-sub">Untick for GST-free items (basic food, some fees, overseas platform charges like Uber's service fee)</span></span></label>
+    <button class="btn" onclick="saveExpense()">Save expense</button>
+  </div>
+</div>
+
+<!-- ============ BUSINESS INCOME MODAL ============ -->
+<div class="modal-wrap" id="bizIncomeModal">
+  <div class="modal-bg" onclick="closeModal('bizIncomeModal')"></div>
+  <div class="modal" role="dialog" aria-label="Add business income">
+    <h3>Add business income</h3>
+    <div class="field"><label for="biDesc">Description</label><input type="text" id="biDesc" placeholder="e.g. Uber fares — July"></div>
+    <div class="row2">
+      <div class="field"><label for="biAmount">Gross amount ($)</label><input type="number" id="biAmount" inputmode="decimal" placeholder="0.00"></div>
+      <div class="field"><label for="biDate">Date</label><input type="date" id="biDate"></div>
+    </div>
+    <label class="check" id="biGstRow"><input type="checkbox" id="biGst" checked><span><span class="c-label">GST charged on this income</span><span class="c-sub">Rideshare fares always include GST. Untick for GST-free sales.</span></span></label>
+    <p class="hint" style="margin-bottom:10px">For rideshare: enter <strong>gross fares before platform fees</strong> (from your monthly or annual tax summary) — GST is calculated on the full fare, and the platform's fee is claimed separately as an expense.</p>
+    <button class="btn" onclick="saveBizIncome()">Save income</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================
+   LodgeLog — Australian tax year companion
+   All figures are estimates from published ATO rates.
+   ===================================================== */
+
+// ---------- FY rate tables ----------
+const FY = {
+  '2025-26': {
+    label:'FY 2025–26 (1 Jul 2025 – 30 Jun 2026)',
+    brackets:[[0,18200,0],[18200,45000,.16],[45000,135000,.30],[135000,190000,.37],[190000,Infinity,.45]],
+    medicareRate:.02, medicareLow:27222,
+    lito:{max:700,t1:37500,r1:.05,t2:45000,r2:.015},
+    cpk:.88, wfh:.70, iawo:20000,
+    qStart:'2025-07-01', qEnd:'2026-06-30'
+  },
+  '2026-27': {
+    label:'FY 2026–27 (1 Jul 2026 – 30 Jun 2027)',
+    brackets:[[0,18200,0],[18200,45000,.15],[45000,135000,.30],[135000,190000,.37],[190000,Infinity,.45]],
+    medicareRate:.02, medicareLow:28011,
+    lito:{max:700,t1:37500,r1:.05,t2:45000,r2:.015},
+    cpk:.91, wfh:.70, iawo:20000,
+    qStart:'2026-07-01', qEnd:'2027-06-30'
+  }
+};
+
+// ---------- Expense categories ----------
+// gst: eligible for GST credit if business & registered; carRunning: excluded when cents/km method chosen
+const CATS = {
+  // Employee (individual return labels)
+  d2_travel:   {label:'Work travel (not commuting)', group:'Employee — D2', gst:false, hint:'Flights, accommodation, taxis and public transport for work trips, travel between workplaces. Not your normal commute.'},
+  d3_clothing: {label:'Uniforms, protective clothing & laundry', group:'Employee — D3', gst:false, hint:'Compulsory uniforms with a logo, hi-vis, steel caps, sun protection. Laundry can be claimed at set rates. Plain clothes never count.'},
+  d4_selfed:   {label:'Self-education & courses', group:'Employee — D4', gst:false, hint:'Courses, certs and conferences that maintain or improve skills for your CURRENT role — e.g. security certifications for a security engineer.'},
+  d5_phone:    {label:'Phone & internet (work %)', group:'Employee — D5', gst:false, hint:'Work-use share of your personal plan. Don\'t claim this if you\'re using the WFH fixed rate — it\'s already covered.'},
+  d5_tools:    {label:'Tools & equipment ≤ $300', group:'Employee — D5', gst:false, hint:'Immediately deductible if ≤ $300 and used for work: keyboards, mice, chargers, headsets, desk lamps.'},
+  d5_depn:     {label:'Depreciating assets > $300', group:'Employee — D5', gst:false, hint:'Laptops (2 yr effective life), monitors (4 yr), chairs (7 yr). Enter only THIS YEAR\'S decline in value, not the purchase price.'},
+  d5_union:    {label:'Union & professional memberships', group:'Employee — D5', gst:false, hint:'Union fees, professional association dues, practising certificates.'},
+  d5_subs:     {label:'Subscriptions, licences & journals', group:'Employee — D5', gst:false, hint:'Work-related software, technical publications, professional library — work-use portion only.'},
+  d5_other:    {label:'Other work expenses', group:'Employee — D5', gst:false, hint:'Anything else directly tied to earning your salary. Keep receipts if total work claims exceed $300.'},
+  ins_income:  {label:'Income protection insurance', group:'Other deductions', gst:false, hint:'Premiums for policies paid outside super that replace income are deductible.'},
+  d_gifts:     {label:'Donations (DGR charities)', group:'Other deductions', gst:false, hint:'$2+ to registered deductible gift recipients, with receipts, nothing received in return.'},
+  d_agent:     {label:'Tax agent & accounting fees', group:'Other deductions', gst:false, hint:'Cost of managing your tax affairs last year, including agent fees and travel to see them.'},
+  // Business / sole trader
+  biz_fees:    {label:'Platform / commission fees', group:'Business', gst:false, hint:'Uber, DiDi and Menulog service fees. Overseas-billed platform fees often have NO GST — check your tax summary before ticking the GST box.'},
+  biz_fuel:    {label:'Fuel & oil', group:'Business — vehicle', gst:true, carRunning:true, hint:'Logbook method only — covered by the flat rate if you use cents/km.'},
+  biz_rego:    {label:'Registration & car insurance', group:'Business — vehicle', gst:true, carRunning:true, hint:'Logbook method only. Note: rego\'s government charges portion is GST-free; the insurance part isn\'t.'},
+  biz_maint:   {label:'Servicing, repairs & tyres', group:'Business — vehicle', gst:true, carRunning:true, hint:'Logbook method only — covered by the flat rate if you use cents/km.'},
+  biz_clean:   {label:'Car washing & detailing', group:'Business — vehicle', gst:true, carRunning:true, hint:'Keeping the work vehicle presentable. Logbook method only.'},
+  biz_tolls:   {label:'Tolls & parking (on trips)', group:'Business — vehicle', gst:true, hint:'Claimable on work trips under EITHER car method — not covered by the cents/km rate.'},
+  biz_amen:    {label:'Passenger amenities', group:'Business', gst:true, hint:'Water, mints, tissues, phone cables for passengers.'},
+  biz_phone:   {label:'Phone & data (business %)', group:'Business', gst:true, hint:'The share of your plan used for the app, navigation and passenger contact.'},
+  biz_equip:   {label:'Equipment & assets', group:'Business', gst:true, hint:'Phone mounts, dashcams, tools, computers. Small businesses can instantly write off assets under $20,000 each.'},
+  biz_insure:  {label:'Business insurance', group:'Business', gst:true, hint:'Public liability, professional indemnity, business-use vehicle cover riders.'},
+  biz_acct:    {label:'Accounting, software & bank fees', group:'Business', gst:true, hint:'Bookkeeping apps, accountant fees for the business, merchant/bank charges (bank fees are GST-free).'},
+  biz_other:   {label:'Other business expenses', group:'Business', gst:true, hint:'Any other cost of running the business — advertising, stationery, protective gear.'}
+};
+
+// ---------- Recommendations ----------
+const RECS = [
+  {id:'wfh', when:p=>p.wfh, title:'Working-from-home fixed rate', est:'Typical: $400–$1,100/yr',
+   body:'RATE¢ per hour worked from home covers energy, internet, phone and stationery in one claim. Keep a real-time log of hours — the ATO no longer accepts estimates or 4-week diaries.', tool:'tools'},
+  {id:'depn', when:p=>p.wfh||p.employee, title:'Home-office equipment on top of the fixed rate', est:'Items ≤ $300 in full',
+   body:'Desks, chairs, monitors and laptops are claimed separately from the WFH rate. Under $300: immediate deduction. Over: claim decline in value (laptop ≈ 2 yrs, monitor ≈ 4 yrs).', cat:'d5_tools'},
+  {id:'selfed', when:p=>p.employee, title:'Self-education tied to your current role', est:'Course cost, work %',
+   body:'Certifications, courses and conference fees that maintain or grow skills in your current job are deductible — including exam fees and required texts.', cat:'d4_selfed'},
+  {id:'phone', when:p=>p.employee&&!p.wfh, title:'Work share of phone & internet', est:'Typical: $150–$500/yr',
+   body:'If you use your own phone/data for work, claim the work-use percentage based on a representative 4-week pattern.', cat:'d5_phone'},
+  {id:'cpk', when:p=>p.employee&&!p.rideshare, title:'Car trips between work sites', est:'RATECPK¢/km, up to 5,000 km',
+   body:'Client-site visits, travel between offices, and trips your employer doesn\'t reimburse. The commute itself never counts.', tool:'tools'},
+  {id:'rs_gst', when:p=>p.rideshare, title:'GST on every fare — plus credits back', est:'1/11th of gross fares',
+   body:'Rideshare income has GST from the first dollar. The upside: you claim back GST credits on the business share of fuel, servicing, insurance and gear via your BAS.', tool:'bas'},
+  {id:'rs_car', when:p=>p.rideshare, title:'Cents/km vs logbook — pick deliberately', est:'Often $3k–$8k+ with logbook',
+   body:'High-km rideshare drivers usually beat the 5,000 km cents/km cap with a 12-week logbook, which unlocks actual fuel, insurance, servicing and depreciation at your business-use %.', tool:'tools'},
+  {id:'rs_fees', when:p=>p.rideshare, title:'Platform service fees', est:'~20–27% of gross fares',
+   body:'The commission Uber/DiDi takes is fully deductible. Grab the annual tax summary from the driver app — it splits gross fares, fees and tolls for you.', cat:'biz_fees'},
+  {id:'rs_amen', when:p=>p.rideshare, title:'Passenger extras & car cleaning', est:'Typical: $200–$800/yr',
+   body:'Water, mints, phone cables, and keeping the car clean are deductible business costs (cleaning sits under the logbook method).', cat:'biz_amen'},
+  {id:'biz_iawo', when:p=>p.business, title:'Instant asset write-off', est:'Assets ≤ $20,000 each',
+   body:'Small businesses can immediately deduct eligible assets costing under $20,000 (per asset) instead of depreciating them.', cat:'biz_equip'},
+  {id:'biz_acct', when:p=>p.business||p.rideshare, title:'Accounting software & agent fees', est:'Typical: $300–$1,500/yr',
+   body:'Bookkeeping subscriptions, BAS/tax agent fees and business bank charges are all deductible.', cat:'biz_acct'},
+  {id:'super', when:p=>true, title:'Personal deductible super contributions', est:'Taxed at 15% instead of your marginal rate',
+   body:'Voluntary contributions (within the concessional cap) can be claimed as a deduction if you lodge a notice of intent with your fund before your return. Powerful at 30%+ marginal rates — not modelled in this estimate.', ext:true},
+  {id:'agent', when:p=>true, title:'Last year\'s tax agent fee', est:'Fully deductible',
+   body:'Whatever you paid to manage your tax affairs last year is claimable this year.', cat:'d_agent'},
+  {id:'gifts', when:p=>true, title:'Charity donations', est:'Any gift $2+',
+   body:'Donations to deductible gift recipients reduce taxable income dollar-for-dollar. Bucket collections up to $10 don\'t need receipts.', cat:'d_gifts'}
+];
+
+// ---------- Storage (safe wrapper: persists when hosted, memory-only otherwise) ----------
+let memStore = {};
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return memStore[k]??null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){ memStore[k]=v; } },
+  persistent(){ try{ localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return true; }catch(e){ return false; } }
+};
+
+// ---------- State ----------
+const DEFAULT_STATE = {
+  fy:'2025-26',
+  profile:{employee:true, wfh:false, rideshare:false, business:false, gst:false},
+  salary:{gross:0, withheld:0},
+  otherIncome:0,
+  paygInstalments:0,
+  bizIncome:[],   // {id, desc, amount, date, gst}
+  expenses:[],    // {id, desc, amount, date, cat, usePct, gst}
+  wfh:{method:'fixed', hours:0, actual:0},
+  car:{use:'employee', method:'cpk', km:0, bizPct:0, depn:0}
+};
+let S = loadState();
+function loadState(){
+  const raw = store.get('lodgelog');
+  if(!raw) return structuredClone(DEFAULT_STATE);
+  try{ return Object.assign(structuredClone(DEFAULT_STATE), JSON.parse(raw)); }
+  catch(e){ return structuredClone(DEFAULT_STATE); }
+}
+function save(){ store.set('lodgelog', JSON.stringify(S)); renderAll(); }
+
+// ---------- Helpers ----------
+const $ = id => document.getElementById(id);
+const fmt = n => (n<0?'−$':'$') + Math.abs(n).toLocaleString('en-AU',{minimumFractionDigits:2, maximumFractionDigits:2});
+const num = v => { const n=parseFloat(v); return isFinite(n)?n:0; };
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2200); }
+function inFY(dateStr){
+  const c=FY[S.fy]; if(!dateStr) return true;
+  return dateStr>=c.qStart && dateStr<=c.qEnd;
+}
+function quarterOf(dateStr){
+  if(!dateStr) return 0;
+  const m = parseInt(dateStr.slice(5,7),10);
+  if(m>=7&&m<=9) return 1; if(m>=10) return 2; if(m<=3) return 3; return 4;
+}
+
+// ---------- Tax engine ----------
+function calcBracketTax(taxable, fy){
+  let tax=0;
+  for(const [lo,hi,rate] of fy.brackets){
+    if(taxable>lo) tax += (Math.min(taxable,hi)-lo)*rate;
+  }
+  return tax;
+}
+function calcLITO(taxable, fy){
+  const L=fy.lito;
+  let o=L.max;
+  if(taxable>L.t1) o -= (Math.min(taxable,L.t2)-L.t1)*L.r1;
+  if(taxable>L.t2) o -= (taxable-L.t2)*L.r2;
+  return Math.max(0,o);
+}
+function calcMedicare(taxable, fy){
+  if(taxable<=fy.medicareLow) return 0;
+  const full = taxable*fy.medicareRate;
+  const phased = (taxable-fy.medicareLow)*.10;
+  return Math.min(full, phased);
+}
+
+// GST helpers
+function gstOnIncomeItem(it){ return (S.profile.gst && it.gst) ? it.amount/11 : 0; }
+function gstCreditOnExpense(ex){
+  const cat = CATS[ex.cat];
+  if(!S.profile.gst || !ex.gst || !cat || cat.group.indexOf('Business')!==0) return 0;
+  if(cat.carRunning){
+    if(S.car.method==='cpk') return 0; // covered by the flat rate for income tax; GST needs separate advice
+    return ex.amount/11 * (num(S.car.bizPct)/100); // logbook: business-use % applies
+  }
+  return ex.amount/11 * (ex.usePct/100);
+}
+
+function computeAll(){
+  const fy = FY[S.fy];
+  // Income
+  const salary = num(S.salary.gross);
+  const withheld = num(S.salary.withheld);
+  const other = num(S.otherIncome);
+  const bizItems = S.bizIncome.filter(i=>inFY(i.date));
+  const bizGross = bizItems.reduce((a,i)=>a+i.amount,0);
+  const bizGst = bizItems.reduce((a,i)=>a+gstOnIncomeItem(i),0);
+  const bizExGst = bizGross - bizGst; // income-tax income excludes GST collected
+
+  // Expenses
+  const exps = S.expenses.filter(e=>inFY(e.date));
+  let empDed=0, bizDed=0, gstCredits=0, excludedCar=0;
+  const bizCarPct = num(S.car.bizPct)/100;
+  for(const ex of exps){
+    const cat = CATS[ex.cat]; if(!cat) continue;
+    const portion = ex.amount*(ex.usePct/100);
+    const isBiz = cat.group.indexOf('Business')===0;
+    if(cat.carRunning && S.car.method==='cpk'){ excludedCar+=portion; continue; }
+    if(isBiz){
+      const credit = gstCreditOnExpense(ex);
+      gstCredits += credit;
+      // car running costs get the logbook business % applied instead of item %
+      const base = cat.carRunning ? ex.amount*bizCarPct : portion;
+      bizDed += base - credit;
+    } else {
+      empDed += portion;
+    }
+  }
+
+  // Tools: WFH
+  let wfhDed=0;
+  if(S.wfh.method==='fixed') wfhDed = num(S.wfh.hours)*fy.wfh;
+  else wfhDed = num(S.wfh.actual);
+  // Tools: car
+  let carDed=0;
+  if(S.car.method==='cpk') carDed = Math.min(num(S.car.km),5000)*fy.cpk;
+  else carDed = num(S.car.depn)*bizCarPct; // running costs already in expenses via logbook %
+  const carIsBiz = S.car.use==='business';
+
+  const totalEmpDed = empDed + wfhDed + (carIsBiz?0:carDed);
+  const totalBizDed = bizDed + (carIsBiz?carDed:0);
+  const netBiz = bizExGst - totalBizDed; // may be negative
+  const assessable = salary + other + netBiz; // business losses offset other income (simplified — non-commercial loss rules may quarantine them)
+  const taxable = Math.max(0, assessable - totalEmpDed);
+
+  const gross = calcBracketTax(taxable, fy);
+  const lito = Math.min(calcLITO(taxable, fy), gross);
+  const medicare = calcMedicare(taxable, fy);
+  const liability = gross - lito + medicare;
+  const credits = withheld + num(S.paygInstalments);
+  const position = credits - liability; // + refund / − payable
+
+  // BAS by quarter
+  const quarters = [1,2,3,4].map(q=>{
+    const inc = bizItems.filter(i=>quarterOf(i.date)===q);
+    const g1 = inc.reduce((a,i)=>a+i.amount,0);
+    const a1 = inc.reduce((a,i)=>a+gstOnIncomeItem(i),0);
+    const b1 = exps.filter(e=>quarterOf(e.date)===q).reduce((a,e)=>a+gstCreditOnExpense(e),0);
+    return {q, g1, a1, b1, net:a1-b1};
+  });
+
+  return {salary, withheld, other, bizGross, bizGst, bizExGst, totalEmpDed, totalBizDed,
+          wfhDed, carDed, netBiz, taxable, gross, lito, medicare, liability, credits,
+          position, quarters, gstCredits, excludedCar, expCount:exps.length};
+}
+
+// ---------- Rendering ----------
+function renderAll(){ renderMeter(); renderHome(); renderIncome(); renderExpenses(); renderTools(); renderBAS(); renderProfile(); }
+
+function renderMeter(){
+  const r = computeAll();
+  const f = $('meterFigure');
+  f.textContent = fmt(Math.abs(r.position));
+  f.className = 'figure ' + (r.position>=0?'refund':'payable');
+  $('meterLabel').textContent = r.position>=0 ? 'Estimated refund' : 'Estimated amount payable';
+  $('fySelect').value = S.fy;
+}
+
+function renderHome(){
+  const r = computeAll();
+  const fy = FY[S.fy];
+  $('homeSummary').innerHTML = `
+    <h3>Income tax estimate <span class="badge ink">${S.fy}</span></h3>
+    <div class="summary-line"><span>Salary & wages</span><span class="v">${fmt(r.salary)}</span></div>
+    ${r.bizGross? `<div class="summary-line"><span>Business income (ex GST)</span><span class="v">${fmt(r.bizExGst)}</span></div>`:''}
+    ${r.other? `<div class="summary-line"><span>Other income</span><span class="v">${fmt(r.other)}</span></div>`:''}
+    ${r.totalBizDed? `<div class="summary-line"><span>Business deductions</span><span class="v">−${fmt(r.totalBizDed).slice(1)}</span></div>`:''}
+    <div class="summary-line"><span>Work-related deductions</span><span class="v">−${fmt(r.totalEmpDed).slice(1)}</span></div>
+    <div class="summary-line"><span><strong>Taxable income</strong></span><span class="v">${fmt(r.taxable)}</span></div>
+    <hr class="divider">
+    <div class="summary-line"><span>Tax on income</span><span class="v">${fmt(r.gross)}</span></div>
+    ${r.lito? `<div class="summary-line"><span>Low income tax offset</span><span class="v">−${fmt(r.lito).slice(1)}</span></div>`:''}
+    <div class="summary-line"><span>Medicare levy</span><span class="v">${fmt(r.medicare)}</span></div>
+    <div class="summary-line"><span>Tax withheld + instalments</span><span class="v">−${fmt(r.credits).slice(1)}</span></div>
+    <div class="summary-line total"><span>${r.position>=0?'Estimated refund':'Estimated payable'}</span><span class="v" style="color:${r.position>=0?'var(--green)':'var(--red)'}">${fmt(Math.abs(r.position))}</span></div>`;
+
+  // BAS teaser on home
+  const basCard = $('homeBasCard');
+  if(S.profile.gst){
+    const cur = r.quarters.find(q=>q.g1||q.b1) || r.quarters[0];
+    const owed = r.quarters.reduce((a,q)=>a+q.net,0);
+    basCard.style.display='block';
+    basCard.innerHTML = `<h3>GST position <span class="badge green">Year to date</span></h3>
+      <div class="summary-line"><span>GST collected on sales (1A)</span><span class="v">${fmt(r.bizGst)}</span></div>
+      <div class="summary-line"><span>GST credits on purchases (1B)</span><span class="v">−${fmt(r.gstCredits).slice(1)}</span></div>
+      <div class="summary-line total"><span>${owed>=0?'Net GST to remit':'Net GST refund'}</span><span class="v">${fmt(Math.abs(owed))}</span></div>
+      <p class="hint" style="margin-top:8px">Set this aside as you go — the BAS tab breaks it into quarters.</p>`;
+  } else basCard.style.display='none';
+
+  // Recommendations
+  const fyRates = FY[S.fy];
+  const recs = RECS.filter(rc=>rc.when(S.profile));
+  $('recList').innerHTML = recs.map(rc=>{
+    const body = rc.body.replace('RATE¢', Math.round(fyRates.wfh*100)+'¢').replace('RATECPK¢', Math.round(fyRates.cpk*100)+'¢');
+    const est = rc.est.replace('RATECPK¢', Math.round(fyRates.cpk*100)+'¢');
+    let action='';
+    if(rc.cat) action = `<button onclick="quickAdd('${rc.cat}')">Add an expense →</button>`;
+    else if(rc.tool) action = `<button onclick="go('${rc.tool}')">Open ${rc.tool==='bas'?'BAS':'calculator'} →</button>`;
+    return `<div class="rec"><div class="r-title">${rc.title}</div><div class="r-body">${body}</div><div class="r-est">${est}</div>${action}</div>`;
+  }).join('') || '<p class="hint">Set up your profile to see suggestions.</p>';
+}
+
+function renderIncome(){
+  $('salaryGross').value = S.salary.gross||'';
+  $('salaryWithheld').value = S.salary.withheld||'';
+  $('otherIncome').value = S.otherIncome||'';
+  $('paygInstalments').value = S.paygInstalments||'';
+  $('bizIncomeCard').style.display = (S.profile.business||S.profile.rideshare)?'block':'none';
+  $('paygCard').style.display = (S.profile.business||S.profile.rideshare)?'block':'none';
+  $('bizGstBadge').style.display = S.profile.gst?'inline':'none';
+  const items = S.bizIncome.filter(i=>inFY(i.date)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  $('bizIncomeList').innerHTML = items.length ? items.map(i=>`
+    <div class="item">
+      <div class="i-main"><div class="i-title">${esc(i.desc)}</div>
+      <div class="i-sub">${i.date||'no date'} · Q${quarterOf(i.date)} ${i.gst?'· incl. GST':''}</div></div>
+      <div><div class="i-amount">${fmt(i.amount)}</div><button class="i-del" onclick="delBizIncome('${i.id}')">remove</button></div>
+    </div>`).join('') : `<div class="empty" style="margin-bottom:10px">No business income logged for ${S.fy} yet.</div>`;
+}
+
+function renderExpenses(){
+  const r = computeAll();
+  const carNote = r.excludedCar>0 ? `<p class="hint" style="margin-top:8px;color:var(--gold)">⚠ ${fmt(r.excludedCar)} of car running costs are excluded because you've chosen the cents-per-km method — it already covers them. Switch to logbook in Tools to claim actuals.</p>`:'';
+  $('expSummary').innerHTML = `
+    <h3>Deduction totals</h3>
+    <div class="summary-line"><span>Work-related expenses</span><span class="v">${fmt(r.totalEmpDed - r.wfhDed - (S.car.use==='employee'?r.carDed:0))}</span></div>
+    <div class="summary-line"><span>WFH claim (from Tools)</span><span class="v">${fmt(r.wfhDed)}</span></div>
+    <div class="summary-line"><span>Car claim (from Tools)</span><span class="v">${fmt(r.carDed)}</span></div>
+    ${(S.profile.business||S.profile.rideshare)?`<div class="summary-line"><span>Business deductions${S.profile.gst?' (ex GST credits)':''}</span><span class="v">${fmt(r.totalBizDed)}</span></div>`:''}
+    <div class="summary-line total"><span>Total deductions</span><span class="v">${fmt(r.totalEmpDed + r.totalBizDed)}</span></div>
+    ${carNote}`;
+  const exps = S.expenses.filter(e=>inFY(e.date)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  $('expenseList').innerHTML = exps.length ? exps.map(e=>{
+    const cat = CATS[e.cat]||{label:e.cat,group:''};
+    const excluded = cat.carRunning && S.car.method==='cpk';
+    return `<div class="item" style="${excluded?'opacity:.45':''}">
+      <div class="i-main"><div class="i-title">${esc(e.desc)}</div>
+      <div class="i-sub">${cat.label} · ${e.date||'no date'} · ${e.usePct}% use${excluded?' · excluded (cents/km)':''}</div></div>
+      <div><div class="i-amount">${fmt(e.amount)}</div><button class="i-del" onclick="delExpense('${e.id}')">remove</button></div>
+    </div>`;
+  }).join('') : `<div class="empty">Nothing logged for ${S.fy} yet. Small, regular logging beats a shoebox of receipts in June.</div>`;
+}
+
+function renderTools(){
+  const fy = FY[S.fy];
+  $('wfhRateBadge').textContent = Math.round(fy.wfh*100)+'c/hr';
+  $('carRateBadge').textContent = Math.round(fy.cpk*100)+'c/km';
+  $('wfhHours').value = S.wfh.hours||'';
+  $('wfhActualAmt').value = S.wfh.actual||'';
+  $('wfhResult').textContent = fmt(num(S.wfh.hours)*fy.wfh);
+  $('wfhActualResult').textContent = fmt(num(S.wfh.actual));
+  document.querySelectorAll('#wfhSeg button').forEach(b=>b.classList.toggle('on', b.dataset.m===S.wfh.method));
+  $('wfhFixedPane').style.display = S.wfh.method==='fixed'?'block':'none';
+  $('wfhActualPane').style.display = S.wfh.method==='actual'?'block':'none';
+
+  $('carUse').value = S.car.use;
+  $('carKm').value = S.car.km||'';
+  $('carBizPct').value = S.car.bizPct||'';
+  $('carDepn').value = S.car.depn||'';
+  document.querySelectorAll('#carSeg button').forEach(b=>b.classList.toggle('on', b.dataset.m===S.car.method));
+  $('carCpkPane').style.display = S.car.method==='cpk'?'block':'none';
+  $('carLogbookPane').style.display = S.car.method==='logbook'?'block':'none';
+  const km = Math.min(num(S.car.km),5000);
+  $('carResult').textContent = fmt(km*fy.cpk);
+  const warn = $('carCpkWarn');
+  if(num(S.car.km)>5000){ warn.style.display='block'; warn.innerHTML=`⚠ You've entered ${num(S.car.km).toLocaleString()} km — the cents/km method caps at 5,000 km (${fmt(5000*fy.cpk)}). With that much driving, the logbook method almost certainly gives a bigger claim.`; }
+  else warn.style.display='none';
+  // logbook figures
+  const pct = num(S.car.bizPct)/100;
+  const r = computeAll();
+  const running = S.expenses.filter(e=>inFY(e.date)&&CATS[e.cat]&&CATS[e.cat].carRunning).reduce((a,e)=>a+e.amount,0);
+  $('carPctEcho').textContent = num(S.car.bizPct);
+  $('carRunningResult').textContent = fmt(running*pct);
+  $('carDepnResult').textContent = fmt(num(S.car.depn)*pct);
+  $('carLogbookTotal').textContent = fmt(running*pct + num(S.car.depn)*pct);
+}
+
+function renderBAS(){
+  const showBas = S.profile.gst;
+  $('navBas').style.display = showBas?'flex':'none';
+  if(!showBas){
+    $('basContent').innerHTML = `<div class="card flat"><p class="hint">You're not registered for GST, so no BAS is due. If your business turnover passes $75,000 — or you start rideshare driving — registration becomes mandatory. Turn it on in Profile once registered.</p></div>`;
+    return;
+  }
+  const r = computeAll();
+  const qNames = ['Q1 · Jul–Sep','Q2 · Oct–Dec','Q3 · Jan–Mar','Q4 · Apr–Jun'];
+  const qDue = ['28 Oct','28 Feb','28 Apr','28 Jul'];
+  $('basContent').innerHTML = r.quarters.map((q,i)=>`
+    <div class="card">
+      <h3>${qNames[i]} <span class="badge ${q.net>0?'gold':'green'}">due ${qDue[i]}</span></h3>
+      <div class="summary-line"><span>G1 · Total sales (incl. GST)</span><span class="v">${fmt(q.g1)}</span></div>
+      <div class="summary-line"><span>1A · GST on sales</span><span class="v">${fmt(q.a1)}</span></div>
+      <div class="summary-line"><span>1B · GST credits on purchases</span><span class="v">−${fmt(q.b1).slice(1)}</span></div>
+      <div class="summary-line total"><span>${q.net>=0?'Net GST payable':'Net GST refund'}</span><span class="v" style="color:${q.net>=0?'var(--gold)':'var(--green)'}">${fmt(Math.abs(q.net))}</span></div>
+    </div>`).join('') + `
+    <div class="card flat"><p class="hint">1B only counts business purchases where the price included GST, at your business-use percentage. ${S.car.method==='cpk'?'Because you\'re using cents/km for income tax, car running-cost GST credits aren\'t auto-included — a reasonable-basis estimate is still possible for GST, but work that out with your agent.':''} Figures assume quarterly cash-basis reporting. Lodge via myGov or your agent — these numbers pre-fill the labels, they don't lodge for you.</p></div>`;
+}
+
+function renderProfile(){
+  $('pEmployee').checked = S.profile.employee;
+  $('pWfh').checked = S.profile.wfh;
+  $('pRideshare').checked = S.profile.rideshare;
+  $('pBusiness').checked = S.profile.business;
+  $('pGst').checked = S.profile.gst;
+  $('gstMandatoryNote').style.display = (S.profile.rideshare && !S.profile.gst)?'block':'none';
+  $('ratesEcho').textContent = FY[S.fy].label;
+  $('storageNote').textContent = store.persistent()
+    ? 'Your data stays on this device in local browser storage — nothing is uploaded anywhere. Export a backup before clearing browser data or switching phones.'
+    : 'Heads-up: persistent storage isn\'t available in this environment, so data lives in memory for this session only. Once the app is hosted (e.g. GitHub Pages) and installed, it saves automatically on your device.';
+}
+
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ---------- Navigation ----------
+function go(view){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  $('view-'+view).classList.add('active');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.view===view));
+  window.scrollTo({top:0});
+}
+document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click', ()=>go(b.dataset.view)));
+
+// ---------- Modals ----------
+function openModal(id){ $(id).classList.add('open'); }
+function closeModal(id){ $(id).classList.remove('open'); }
+function todayISO(){ const d=new Date(); return d.toISOString().slice(0,10); }
+
+function buildCategoryOptions(preselect){
+  const sel = $('exCategory');
+  const showBiz = S.profile.business||S.profile.rideshare;
+  const groups = {};
+  for(const [k,c] of Object.entries(CATS)){
+    if(c.group.indexOf('Business')===0 && !showBiz) continue;
+    (groups[c.group] = groups[c.group]||[]).push([k,c]);
+  }
+  sel.innerHTML = Object.entries(groups).map(([g,items])=>
+    `<optgroup label="${g}">`+items.map(([k,c])=>`<option value="${k}">${c.label}</option>`).join('')+`</optgroup>`).join('');
+  if(preselect && CATS[preselect]) sel.value = preselect;
+  updateCatHint();
+}
+function updateCatHint(){
+  const c = CATS[$('exCategory').value];
+  $('exCatHint').textContent = c?c.hint:'';
+  $('exGstRow').style.display = (c && c.group.indexOf('Business')===0 && S.profile.gst)?'flex':'none';
+}
+$('exCategory') && document.addEventListener('change', e=>{ if(e.target.id==='exCategory') updateCatHint(); });
+
+function openExpenseModal(preselect){
+  buildCategoryOptions(preselect);
+  $('exDesc').value=''; $('exAmount').value=''; $('exDate').value=todayISO(); $('exUsePct').value='100'; $('exGst').checked=true;
+  openModal('expenseModal');
+}
+function quickAdd(cat){ openExpenseModal(cat); }
+function saveExpense(){
+  const amount = num($('exAmount').value);
+  if(!amount){ toast('Enter an amount'); return; }
+  S.expenses.push({id:uid(), desc:$('exDesc').value||CATS[$('exCategory').value].label,
+    amount, date:$('exDate').value, cat:$('exCategory').value,
+    usePct:Math.min(100,Math.max(0,num($('exUsePct').value)||100)), gst:$('exGst').checked});
+  closeModal('expenseModal'); save(); toast('Expense saved'); go('expenses');
+}
+function delExpense(id){ S.expenses = S.expenses.filter(e=>e.id!==id); save(); }
+
+function openBizIncomeModal(){
+  $('biDesc').value=''; $('biAmount').value=''; $('biDate').value=todayISO(); $('biGst').checked=true;
+  $('biGstRow').style.display = S.profile.gst?'flex':'none';
+  openModal('bizIncomeModal');
+}
+function saveBizIncome(){
+  const amount = num($('biAmount').value);
+  if(!amount){ toast('Enter an amount'); return; }
+  S.bizIncome.push({id:uid(), desc:$('biDesc').value||'Business income', amount, date:$('biDate').value, gst:$('biGst').checked});
+  closeModal('bizIncomeModal'); save(); toast('Income saved');
+}
+function delBizIncome(id){ S.bizIncome = S.bizIncome.filter(i=>i.id!==id); save(); }
+
+// ---------- Bindings ----------
+$('fySelect').addEventListener('change', e=>{ S.fy=e.target.value; save(); });
+[['salaryGross',v=>S.salary.gross=num(v)],['salaryWithheld',v=>S.salary.withheld=num(v)],
+ ['otherIncome',v=>S.otherIncome=num(v)],['paygInstalments',v=>S.paygInstalments=num(v)],
+ ['wfhHours',v=>S.wfh.hours=num(v)],['wfhActualAmt',v=>S.wfh.actual=num(v)],
+ ['carKm',v=>S.car.km=num(v)],['carBizPct',v=>S.car.bizPct=Math.min(100,num(v))],['carDepn',v=>S.car.depn=num(v)]
+].forEach(([id,fn])=>{
+  $(id).addEventListener('input', e=>{ fn(e.target.value); store.set('lodgelog', JSON.stringify(S)); renderMeter(); });
+  $(id).addEventListener('change', ()=>save());
+});
+$('carUse').addEventListener('change', e=>{ S.car.use=e.target.value; save(); });
+document.querySelectorAll('#wfhSeg button').forEach(b=>b.addEventListener('click',()=>{ S.wfh.method=b.dataset.m; save(); }));
+document.querySelectorAll('#carSeg button').forEach(b=>b.addEventListener('click',()=>{ S.car.method=b.dataset.m; save(); }));
+[['pEmployee','employee'],['pWfh','wfh'],['pRideshare','rideshare'],['pBusiness','business'],['pGst','gst']]
+.forEach(([id,key])=>$(id).addEventListener('change', e=>{
+  S.profile[key]=e.target.checked;
+  if(key==='rideshare'&&e.target.checked&&!S.profile.gst) toast('Reminder: rideshare requires GST registration');
+  save();
+}));
+
+// ---------- Backup ----------
+function exportData(){
+  const blob = new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `lodgelog-backup-${todayISO()}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('Backup downloaded');
+}
+function importData(ev){
+  const f = ev.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{ try{ S = Object.assign(structuredClone(DEFAULT_STATE), JSON.parse(r.result)); save(); toast('Backup restored'); }catch(e){ toast('Invalid backup file'); } };
+  r.readAsText(f);
+}
+function resetAll(){
+  if(confirm('Erase all LodgeLog data on this device? This can\'t be undone.')){
+    S = structuredClone(DEFAULT_STATE); save(); toast('All data erased');
+  }
+}
+
+// ---------- Service worker ----------
+if('serviceWorker' in navigator && location.protocol==='https:'){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+
+renderAll();
+</script>
+</body>
+</html>
