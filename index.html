@@ -338,7 +338,9 @@ nav button:focus-visible{outline:2px solid var(--green)}
       <h3>Data</h3>
       <p class="hint" style="margin-bottom:10px" id="storageNote"></p>
       <button class="btn secondary small" onclick="exportData()">Export backup (JSON)</button>
-      <button class="btn secondary small" onclick="document.getElementById('importFile').click()" style="margin-left:6px">Import backup</button>
+      <button class="btn secondary small" onclick="exportCSV()" style="margin-left:6px">Export CSV</button>
+      <button class="btn secondary small" onclick="document.getElementById('importFile').click()" style="margin-top:8px">Import backup</button>
+      <p class="hint" style="margin-top:8px">CSV is for spreadsheets and your accountant — it carries every line with dates, categories, GST and deductible amounts. Use the JSON backup to restore into LodgeLog.</p>
       <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
       <hr class="divider">
       <button class="btn danger-ghost small" onclick="resetAll()">Erase everything</button>
@@ -887,6 +889,85 @@ document.querySelectorAll('#carSeg button').forEach(b=>b.addEventListener('click
 }));
 
 // ---------- Backup ----------
+function csvCell(v){
+  const s = String(v??'');
+  return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function expenseDeductible(ex){
+  const cat = CATS[ex.cat]; if(!cat) return 0;
+  const isBiz = cat.group.indexOf('Business')===0;
+  if(cat.carRunning && S.car.method==='cpk') return 0; // covered by cents/km rate
+  if(isBiz){
+    const base = cat.carRunning ? ex.amount*(num(S.car.bizPct)/100) : ex.amount*(ex.usePct/100);
+    return base - gstCreditOnExpense(ex);
+  }
+  return ex.amount*(ex.usePct/100);
+}
+function exportCSV(){
+  const fy = FY[S.fy];
+  const r = computeAll();
+  const rows = [];
+  const push = arr => rows.push(arr.map(csvCell).join(','));
+  push(['Record type','Date','Quarter','Description','Category','Group','Amount ($)','Use %','GST in price','GST amount ($)','Deductible ($)','Notes']);
+
+  // Metadata & profile
+  push(['Meta','','','Exported',todayISO(),'','','','','','',fy.label]);
+  push(['Meta','','','Profile','','','','','','','',
+    Object.entries(S.profile).filter(([,v])=>v).map(([k])=>k).join('; ')||'none set']);
+
+  // Income
+  push(['Income','','','Gross salary & wages','Salary','PAYG', num(S.salary.gross).toFixed(2),'','','','',`Tax withheld: ${num(S.salary.withheld).toFixed(2)}`]);
+  push(['Income','','','Other income (interest, dividends)','Other','', num(S.otherIncome).toFixed(2),'','','','','Franking credits not modelled']);
+  push(['Income','','','PAYG instalments paid','Credit','', num(S.paygInstalments).toFixed(2),'','','','','Credited against final liability']);
+  for(const i of S.bizIncome.filter(x=>inFY(x.date)).sort((a,b)=>(a.date||'').localeCompare(b.date||''))){
+    const gst = gstOnIncomeItem(i);
+    push(['Business income', i.date||'', 'Q'+quarterOf(i.date), i.desc, 'Sales', 'Business',
+      i.amount.toFixed(2), '', i.gst?'yes':'no', gst.toFixed(2), '',
+      gst?`Ex-GST income: ${(i.amount-gst).toFixed(2)}`:'GST-free sale']);
+  }
+
+  // Expenses
+  for(const e of S.expenses.filter(x=>inFY(x.date)).sort((a,b)=>(a.date||'').localeCompare(b.date||''))){
+    const cat = CATS[e.cat]||{label:e.cat,group:''};
+    const credit = gstCreditOnExpense(e);
+    const ded = expenseDeductible(e);
+    const excluded = cat.carRunning && S.car.method==='cpk';
+    push(['Expense', e.date||'', 'Q'+quarterOf(e.date), e.desc, cat.label, cat.group,
+      e.amount.toFixed(2), e.usePct, e.gst?'yes':'no', credit.toFixed(2), ded.toFixed(2),
+      excluded?'Excluded — covered by cents/km rate':(cat.carRunning?`Logbook business use ${num(S.car.bizPct)}% applied`:'')]);
+  }
+
+  // Calculator claims
+  if(S.wfh.method==='fixed')
+    push(['Claim','','','Working from home — fixed rate','WFH','Employee — D5','','','','',(num(S.wfh.hours)*fy.wfh).toFixed(2),`${S.wfh.hours||0} hrs × ${Math.round(fy.wfh*100)}c`]);
+  else
+    push(['Claim','','','Working from home — actual cost','WFH','Employee — D5','','','','',num(S.wfh.actual).toFixed(2),'Actual cost method']);
+  if(S.car.method==='cpk')
+    push(['Claim','','','Car — cents per km','Car',S.car.use==='business'?'Business':'Employee — D1','','','','',(Math.min(num(S.car.km),5000)*fy.cpk).toFixed(2),`${Math.min(num(S.car.km),5000)} km × ${Math.round(fy.cpk*100)}c (5,000 km cap)`]);
+  else
+    push(['Claim','','','Car — logbook depreciation','Car',S.car.use==='business'?'Business':'Employee — D1','','',
+      '','',(num(S.car.depn)*num(S.car.bizPct)/100).toFixed(2),`Depreciation × ${num(S.car.bizPct)}% (running costs listed as expenses above)`]);
+
+  // Totals & tax position
+  push(['Total','','','Work-related deductions','','','','','','',r.totalEmpDed.toFixed(2),'']);
+  push(['Total','','','Business deductions (ex GST credits)','','','','','','',r.totalBizDed.toFixed(2),'']);
+  push(['Total','','','Taxable income','','',r.taxable.toFixed(2),'','','','','']);
+  push(['Total','','','Tax + Medicare − LITO','','',r.liability.toFixed(2),'','','','','']);
+  push(['Total','','','Withheld + instalments','','',r.credits.toFixed(2),'','','','','']);
+  push(['Total','','','Estimated '+(r.position>=0?'refund':'payable'),'','',Math.abs(r.position).toFixed(2),'','','','','Estimate only — not tax advice']);
+  if(S.profile.gst){
+    push(['GST','','','GST collected on sales (1A, YTD)','','','','','',r.bizGst.toFixed(2),'','']);
+    push(['GST','','','GST credits on purchases (1B, YTD)','','','','','',r.gstCredits.toFixed(2),'','']);
+    for(const q of r.quarters) push(['GST','','Q'+q.q,'Net GST '+(q.net>=0?'payable':'refund'),'','','','','',Math.abs(q.net).toFixed(2),'',`G1: ${q.g1.toFixed(2)}`]);
+  }
+
+  const blob = new Blob(['\ufeff'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `lodgelog-${S.fy}-${todayISO()}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV downloaded');
+}
 function exportData(){
   const blob = new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
   const a = document.createElement('a');
